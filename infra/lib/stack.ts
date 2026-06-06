@@ -195,6 +195,28 @@ export class TradeAssistantStack extends cdk.Stack {
     alertsTable.grantReadData(weeklyReportFn);
     pushNotifyFn.grantInvoke(weeklyReportFn);
 
+    // Pre-Market Open Notification Lambda (Sunday 11pm SGT = 15:00 UTC)
+    const premarketFn = new NodejsFunction(this, "PreMarket", {
+      ...nodejsProps,
+      timeout: cdk.Duration.seconds(30),
+      functionName: "tradeassistant-premarket",
+      entry: path.join(FUNCTIONS_DIR, "intelligence/premarket.ts"),
+      environment: {
+        ...defaultEnv,
+        PUSH_FUNCTION: pushNotifyFn.functionName,
+      },
+    });
+
+    premarketFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:InvokeModel"],
+        resources: ["*"],
+      })
+    );
+
+    marketDataTable.grantReadData(premarketFn);
+    pushNotifyFn.grantInvoke(premarketFn);
+
     // API Gateway
     const api = new apigateway.RestApi(this, "Api", {
       restApiName: "tradeassistant-api",
@@ -294,6 +316,12 @@ export class TradeAssistantStack extends cdk.Stack {
       ruleName: "tradeassistant-weekly-report",
       schedule: events.Schedule.cron({ weekDay: "SUN", hour: "13", minute: "0" }), // 21:00 SGT Sunday
       targets: [new targets.LambdaFunction(weeklyReportFn)],
+    });
+
+    new events.Rule(this, "PreMarketSchedule", {
+      ruleName: "tradeassistant-premarket",
+      schedule: events.Schedule.cron({ weekDay: "SUN", hour: "15", minute: "0" }), // 23:00 SGT Sunday
+      targets: [new targets.LambdaFunction(premarketFn)],
     });
 
     // S3 + CloudFront for hosting

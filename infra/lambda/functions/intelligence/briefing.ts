@@ -63,7 +63,7 @@ Be concise. Focus on actionable intelligence. Respond with only valid JSON.`;
   try {
     const bedrockResponse = await bedrock.send(
       new InvokeModelCommand({
-        modelId: "amazon.nova-micro-v1:0",
+        modelId: "apac.amazon.nova-micro-v1:0",
         contentType: "application/json",
         accept: "application/json",
         body: JSON.stringify({

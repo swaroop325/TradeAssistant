@@ -157,7 +157,7 @@ In 1-2 sentences, give a forward-looking outlook for gold next week. Be specific
 
     const bedrockResponse = await bedrock.send(
       new InvokeModelCommand({
-        modelId: "amazon.nova-micro-v1:0",
+        modelId: "apac.amazon.nova-micro-v1:0",
         contentType: "application/json",
         accept: "application/json",
         body: JSON.stringify({
