@@ -191,7 +191,7 @@ export class TradeAssistantStack extends cdk.Stack {
       })
     );
 
-    marketDataTable.grantReadData(weeklyReportFn);
+    marketDataTable.grantReadWriteData(weeklyReportFn);
     alertsTable.grantReadData(weeklyReportFn);
     pushNotifyFn.grantInvoke(weeklyReportFn);
 
