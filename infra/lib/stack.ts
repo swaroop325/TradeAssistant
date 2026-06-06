@@ -150,7 +150,7 @@ export class TradeAssistantStack extends cdk.Stack {
 
     alertsTable.grantReadWriteData(alertEngineFn);
     subscriptionsTable.grantReadData(alertEngineFn);
-    marketDataTable.grantReadData(alertEngineFn);
+    marketDataTable.grantReadWriteData(alertEngineFn);
     pushNotifyFn.grantInvoke(alertEngineFn);
     alertEngineFn.addEnvironment("PUSH_FUNCTION", pushNotifyFn.functionName);
 
@@ -262,7 +262,7 @@ export class TradeAssistantStack extends cdk.Stack {
 
     new events.Rule(this, "AlertEngineSchedule", {
       ruleName: "tradeassistant-alert-engine",
-      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
       targets: [new targets.LambdaFunction(alertEngineFn)],
     });
 

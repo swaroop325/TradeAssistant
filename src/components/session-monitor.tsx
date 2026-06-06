@@ -1,12 +1,19 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Clock } from "lucide-react";
+import { Clock, Flame } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { useMarketStore } from "@/lib/store";
 import { useClock } from "@/hooks/useClock";
 import { SESSIONS, getCurrentSession, getSecondsUntilHour, formatCountdown, cn } from "@/lib/utils";
 import { isMarketOpen } from "@/lib/market-hours";
 import { useState, useEffect } from "react";
+
+const KILL_ZONES = [
+  { name: "London KZ", start: 15, end: 16, color: "text-warning" },
+  { name: "NY KZ", start: 20, end: 22, color: "text-accent" },
+  { name: "London/NY Overlap", start: 20, end: 23, color: "text-critical" },
+];
 
 interface SessionRowProps {
   session: keyof typeof SESSIONS;
@@ -80,6 +87,10 @@ export function SessionMonitor() {
   );
   const marketOpen = isMarketOpen();
   const currentSession = marketOpen ? getCurrentSession(sgtTime.getHours()) : null;
+  const hour = sgtTime.getHours();
+  const rangeConsumed = useMarketStore((s) => s.price.rangeConsumed);
+
+  const activeKillZone = KILL_ZONES.find((kz) => hour >= kz.start && hour < kz.end);
 
   return (
     <Card>
@@ -89,6 +100,39 @@ export function SessionMonitor() {
           Session Monitor
         </span>
       </div>
+
+      {activeKillZone && (
+        <motion.div
+          className={cn("flex items-center gap-2 px-3 py-2 rounded-lg mb-3 bg-muted/40 border border-border/60")}
+          animate={{ opacity: [0.8, 1, 0.8] }}
+          transition={{ duration: 2, repeat: Infinity }}
+        >
+          <Flame className={cn("w-3.5 h-3.5", activeKillZone.color)} />
+          <span className={cn("text-xs font-medium", activeKillZone.color)}>
+            {activeKillZone.name} Active
+          </span>
+        </motion.div>
+      )}
+
+      {rangeConsumed > 0 && (
+        <div className="mb-3 px-1">
+          <div className="flex justify-between text-[10px] mb-1">
+            <span className="text-muted-foreground">Daily Range Used</span>
+            <span className="font-mono tabular-nums text-foreground/80">{Math.round(rangeConsumed)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden">
+            <motion.div
+              className={cn(
+                "h-full rounded-full",
+                rangeConsumed > 80 ? "bg-critical" : rangeConsumed > 50 ? "bg-warning" : "bg-accent"
+              )}
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(rangeConsumed, 100)}%` }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         {(Object.keys(SESSIONS) as Array<keyof typeof SESSIONS>).map(

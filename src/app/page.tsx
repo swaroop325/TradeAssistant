@@ -10,6 +10,8 @@ import { EconomicCalendar } from "@/components/economic-calendar";
 import { IntelligenceFeed } from "@/components/intelligence-feed";
 import { DailyBriefing } from "@/components/daily-briefing";
 import { WeeklyReport } from "@/components/weekly-report";
+import { Correlations } from "@/components/correlations";
+import { KeyLevels } from "@/components/key-levels";
 import { registerServiceWorker } from "@/lib/service-worker";
 import { useMarketPolling } from "@/hooks/useMarketPolling";
 import { AuthGate } from "@/components/auth-gate";
@@ -63,6 +65,14 @@ export default function Dashboard() {
 
           <motion.div variants={fadeUp}>
             <SessionMonitor />
+          </motion.div>
+
+          <motion.div variants={fadeUp}>
+            <Correlations />
+          </motion.div>
+
+          <motion.div variants={fadeUp}>
+            <KeyLevels />
           </motion.div>
 
           <motion.div variants={fadeUp}>

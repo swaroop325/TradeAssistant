@@ -52,6 +52,9 @@ export function useMarketPolling() {
             trend: trend as any,
             volatility: volatility as any,
             bias: bias as any,
+            rangeConsumed: (data as any).rangeConsumed || 0,
+            pivots: (data as any).pivots || null,
+            correlations: (data as any).correlations || null,
           });
 
           useMarketStore.getState().addPriceHistory(data.price);

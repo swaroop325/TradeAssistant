@@ -1,5 +1,22 @@
 import { create } from "zustand";
 
+export interface CorrelationData {
+  price: number;
+  change: number;
+  changePercent: number;
+  signal: string;
+}
+
+export interface PivotData {
+  pp: number;
+  r1: number;
+  r2: number;
+  r3: number;
+  s1: number;
+  s2: number;
+  s3: number;
+}
+
 export interface PriceData {
   price: number;
   change: number;
@@ -11,6 +28,9 @@ export interface PriceData {
   trend: "strong_up" | "up" | "neutral" | "down" | "strong_down";
   volatility: "low" | "average" | "above_average" | "high";
   bias: "bullish" | "bearish" | "neutral";
+  rangeConsumed: number;
+  pivots: PivotData | null;
+  correlations: { dxy: CorrelationData | null; tnx: CorrelationData | null; vix: CorrelationData | null } | null;
 }
 
 export interface MarketEvent {
@@ -91,6 +111,9 @@ export const useMarketStore = create<MarketStore>((set) => ({
     trend: "neutral",
     volatility: "low",
     bias: "neutral",
+    rangeConsumed: 0,
+    pivots: null,
+    correlations: null,
   },
   priceHistory: [],
   events: [],

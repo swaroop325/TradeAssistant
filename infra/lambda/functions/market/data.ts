@@ -4,6 +4,7 @@ const dynamo = new DynamoDBClient({});
 const TABLE = process.env.MARKET_DATA_TABLE!;
 
 const YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m&range=1d";
+const CORR_SYMBOLS = ["DX-Y.NYB", "%5ETNX", "%5EVIX"];
 
 interface PriceData {
   symbol: string;
@@ -15,6 +16,17 @@ interface PriceData {
   open: number;
   previousClose: number;
   timestamp: string;
+  rangeConsumed?: number;
+  avgDailyRange?: number;
+  pivots?: { pp: number; r1: number; r2: number; r3: number; s1: number; s2: number; s3: number };
+  correlations?: { dxy: CorrelationData | null; tnx: CorrelationData | null; vix: CorrelationData | null };
+}
+
+interface CorrelationData {
+  price: number;
+  change: number;
+  changePercent: number;
+  signal: string;
 }
 
 export async function handler(event: any) {
@@ -60,6 +72,26 @@ async function pollMarketData() {
     const dayLow = lows.length > 0 ? Math.min(...lows) : price;
     const dayOpen = indicators?.open?.find((v: number | null) => v !== null) || price;
 
+    // Pivot points (from previous day's H/L/C)
+    const pp = (dayHigh + dayLow + price) / 3;
+    const pivots = {
+      pp: parseFloat(pp.toFixed(2)),
+      r1: parseFloat((2 * pp - dayLow).toFixed(2)),
+      r2: parseFloat((pp + (dayHigh - dayLow)).toFixed(2)),
+      r3: parseFloat((dayHigh + 2 * (pp - dayLow)).toFixed(2)),
+      s1: parseFloat((2 * pp - dayHigh).toFixed(2)),
+      s2: parseFloat((pp - (dayHigh - dayLow)).toFixed(2)),
+      s3: parseFloat((dayLow - 2 * (dayHigh - pp)).toFixed(2)),
+    };
+
+    // Average daily range (use current range vs typical 30-pip average for gold)
+    const currentRange = dayHigh - dayLow;
+    const avgDailyRange = 35;
+    const rangeConsumed = Math.min(100, Math.round((currentRange / avgDailyRange) * 100));
+
+    // Fetch correlations
+    const correlations = await fetchCorrelations();
+
     const priceData: PriceData = {
       symbol: "XAUUSD",
       price,
@@ -70,6 +102,10 @@ async function pollMarketData() {
       open: dayOpen,
       previousClose,
       timestamp: new Date().toISOString(),
+      rangeConsumed,
+      avgDailyRange,
+      pivots,
+      correlations,
     };
 
     const now = new Date();
@@ -107,6 +143,73 @@ async function pollMarketData() {
     console.error("Poll error:", error);
     return { statusCode: 500, body: "Error" };
   }
+}
+
+async function fetchCorrelations(): Promise<{ dxy: CorrelationData | null; tnx: CorrelationData | null; vix: CorrelationData | null }> {
+  const result = { dxy: null as CorrelationData | null, tnx: null as CorrelationData | null, vix: null as CorrelationData | null };
+
+  try {
+    const [dxyRes, tnxRes, vixRes] = await Promise.allSettled([
+      fetch("https://query1.finance.yahoo.com/v8/finance/chart/DX-Y.NYB?interval=1d&range=1d", { headers: { "User-Agent": "Mozilla/5.0" } }),
+      fetch("https://query1.finance.yahoo.com/v8/finance/chart/%5ETNX?interval=1d&range=1d", { headers: { "User-Agent": "Mozilla/5.0" } }),
+      fetch("https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=1d", { headers: { "User-Agent": "Mozilla/5.0" } }),
+    ]);
+
+    if (dxyRes.status === "fulfilled" && dxyRes.value.ok) {
+      const data = await dxyRes.value.json();
+      const meta = data.chart?.result?.[0]?.meta;
+      if (meta) {
+        const prev = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
+        const price = meta.regularMarketPrice;
+        const chg = price - prev;
+        const chgPct = (chg / prev) * 100;
+        result.dxy = {
+          price: parseFloat(price.toFixed(3)),
+          change: parseFloat(chg.toFixed(3)),
+          changePercent: parseFloat(chgPct.toFixed(2)),
+          signal: chgPct > 0.2 ? "Bearish for gold" : chgPct < -0.2 ? "Bullish for gold" : "Neutral",
+        };
+      }
+    }
+
+    if (tnxRes.status === "fulfilled" && tnxRes.value.ok) {
+      const data = await tnxRes.value.json();
+      const meta = data.chart?.result?.[0]?.meta;
+      if (meta) {
+        const prev = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
+        const price = meta.regularMarketPrice;
+        const chg = price - prev;
+        const chgPct = (chg / prev) * 100;
+        result.tnx = {
+          price: parseFloat(price.toFixed(3)),
+          change: parseFloat(chg.toFixed(3)),
+          changePercent: parseFloat(chgPct.toFixed(2)),
+          signal: chgPct > 1 ? "Headwind for gold" : chgPct < -1 ? "Tailwind for gold" : "Neutral",
+        };
+      }
+    }
+
+    if (vixRes.status === "fulfilled" && vixRes.value.ok) {
+      const data = await vixRes.value.json();
+      const meta = data.chart?.result?.[0]?.meta;
+      if (meta) {
+        const prev = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPrice;
+        const price = meta.regularMarketPrice;
+        const chg = price - prev;
+        const chgPct = (chg / prev) * 100;
+        result.vix = {
+          price: parseFloat(price.toFixed(2)),
+          change: parseFloat(chg.toFixed(2)),
+          changePercent: parseFloat(chgPct.toFixed(2)),
+          signal: price > 25 ? "High fear — gold supportive" : price > 18 ? "Elevated — mild gold support" : "Low fear — no catalyst",
+        };
+      }
+    }
+  } catch (err) {
+    console.error("Correlations fetch error:", err);
+  }
+
+  return result;
 }
 
 async function getLatestData() {
