@@ -9,7 +9,6 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
 # testing
 /coverage
 
@@ -30,8 +29,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.local
+.env.production.local
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +41,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# CDK
+cdk.out/
+infra/cdk.out/
+infra/dist/
+infra/node_modules/
+cdk-outputs.json
+
+# Playwright
+.playwright-mcp/
+.playwright_mcp/
+dashboard-*.png
+settings-panel.png
+notification-sheet.png
+
+# Lambda layer deps
+infra/lambda/layers/shared/nodejs/node_modules/
+infra/lambda/layers/shared/nodejs/package-lock.json
