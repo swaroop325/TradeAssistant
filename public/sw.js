@@ -54,17 +54,35 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+const VIBRATION_PATTERNS = {
+  "session-alert": [200, 100, 200],
+  "price-alert": [100, 50, 100, 50, 300],
+  "intelligence-alert": [300, 100, 300, 100, 300],
+  "economic-alert": [150, 75, 150, 75, 150, 75, 400],
+  "briefing": [100, 200, 100],
+  "critical": [500, 200, 500, 200, 500],
+  "default": [100, 50, 100],
+};
+
+function getVibrationPattern(tag, data) {
+  if (data.category === "price" && data.body && data.body.includes("critical")) {
+    return VIBRATION_PATTERNS["critical"];
+  }
+  return VIBRATION_PATTERNS[tag] || VIBRATION_PATTERNS["default"];
+}
+
 self.addEventListener("push", (event) => {
   const data = event.data ? event.data.json() : {};
   const title = data.title || "TradeAssistant";
+  const tag = data.tag || "ta-alert";
   const options = {
     body: data.body || "New alert",
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
-    vibrate: [100, 50, 100],
-    data: { url: data.url || "/" },
+    vibrate: getVibrationPattern(tag, data),
+    data: { url: data.url || "/", category: data.category || "general" },
     actions: data.actions || [],
-    tag: data.tag || "ta-alert",
+    tag: tag,
     renotify: true,
   };
 

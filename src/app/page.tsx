@@ -10,6 +10,7 @@ import { EconomicCalendar } from "@/components/economic-calendar";
 import { IntelligenceFeed } from "@/components/intelligence-feed";
 import { DailyBriefing } from "@/components/daily-briefing";
 import { AlertHistory } from "@/components/alert-history";
+import { WeeklyReport } from "@/components/weekly-report";
 import { registerServiceWorker } from "@/lib/service-worker";
 import { useMarketPolling } from "@/hooks/useMarketPolling";
 import { AuthGate } from "@/components/auth-gate";
@@ -75,6 +76,10 @@ export default function Dashboard() {
 
           <motion.div variants={fadeUp} className="md:col-span-1">
             <DailyBriefing />
+          </motion.div>
+
+          <motion.div variants={fadeUp}>
+            <WeeklyReport />
           </motion.div>
 
           <motion.div variants={fadeUp} className="col-span-full lg:col-span-2">

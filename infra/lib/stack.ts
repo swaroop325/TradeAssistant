@@ -172,6 +172,29 @@ export class TradeAssistantStack extends cdk.Stack {
     marketDataTable.grantReadWriteData(dailyBriefingFn);
     alertsTable.grantReadWriteData(dailyBriefingFn);
 
+    // Weekly Report Lambda
+    const weeklyReportFn = new NodejsFunction(this, "WeeklyReport", {
+      ...nodejsProps,
+      timeout: cdk.Duration.seconds(120),
+      functionName: "tradeassistant-weekly-report",
+      entry: path.join(FUNCTIONS_DIR, "intelligence/weekly-report.ts"),
+      environment: {
+        ...defaultEnv,
+        PUSH_FUNCTION: pushNotifyFn.functionName,
+      },
+    });
+
+    weeklyReportFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:InvokeModel"],
+        resources: ["*"],
+      })
+    );
+
+    marketDataTable.grantReadData(weeklyReportFn);
+    alertsTable.grantReadData(weeklyReportFn);
+    pushNotifyFn.grantInvoke(weeklyReportFn);
+
     // API Gateway
     const api = new apigateway.RestApi(this, "Api", {
       restApiName: "tradeassistant-api",
@@ -227,6 +250,9 @@ export class TradeAssistantStack extends cdk.Stack {
     const briefingResource = api.root.addResource("briefing");
     briefingResource.addMethod("GET", new apigateway.LambdaIntegration(dailyBriefingFn));
 
+    const reportResource = api.root.addResource("report");
+    reportResource.addMethod("GET", new apigateway.LambdaIntegration(weeklyReportFn));
+
     // EventBridge Schedules
     new events.Rule(this, "MarketDataSchedule", {
       ruleName: "tradeassistant-market-data-poll",
@@ -262,6 +288,12 @@ export class TradeAssistantStack extends cdk.Stack {
       ruleName: "tradeassistant-evening-briefing",
       schedule: events.Schedule.cron({ hour: "12", minute: "0" }), // 20:00 SGT
       targets: [new targets.LambdaFunction(dailyBriefingFn)],
+    });
+
+    new events.Rule(this, "WeeklyReportSchedule", {
+      ruleName: "tradeassistant-weekly-report",
+      schedule: events.Schedule.cron({ weekDay: "SUN", hour: "13", minute: "0" }), // 21:00 SGT Sunday
+      targets: [new targets.LambdaFunction(weeklyReportFn)],
     });
 
     // S3 + CloudFront for hosting

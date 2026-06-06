@@ -79,6 +79,52 @@ function checkAlerts(ctx: MarketContext): AlertResult[] {
   return alerts;
 }
 
+async function checkEventCountdowns(now: Date): Promise<AlertResult[]> {
+  const alerts: AlertResult[] = [];
+
+  try {
+    const eventsResult = await dynamo.send(
+      new QueryCommand({
+        TableName: MARKET_DATA_TABLE,
+        KeyConditionExpression: "pk = :pk AND sk = :sk",
+        ExpressionAttributeValues: {
+          ":pk": { S: "EVENTS" },
+          ":sk": { S: "calendar" },
+        },
+        Limit: 1,
+      })
+    );
+
+    const eventsItem = eventsResult.Items?.[0];
+    if (!eventsItem?.data?.S) return alerts;
+
+    const events = JSON.parse(eventsItem.data.S);
+
+    for (const event of events) {
+      if (event.impact !== "high" && event.impact !== "critical") continue;
+
+      const eventTime = new Date(event.time);
+      const minutesUntil = (eventTime.getTime() - now.getTime()) / 60000;
+
+      // Fire alert when event is 10-15 minutes away (runs every 5min so this catches it)
+      if (minutesUntil > 0 && minutesUntil <= 15) {
+        const mins = Math.round(minutesUntil);
+        alerts.push({
+          key: `economic:countdown:${event.id}`,
+          title: `${event.name} in ${mins} min`,
+          summary: `${event.impact.toUpperCase()} impact event approaching. ${event.forecast ? `Forecast: ${event.forecast}` : ""}${event.previous ? ` Previous: ${event.previous}` : ""} Expect sharp gold movement.`,
+          impact: event.impact === "critical" ? "critical" : "high",
+          category: "economic",
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Event countdown check failed:", err);
+  }
+
+  return alerts;
+}
+
 export async function handler(event: any) {
   if (event.source === "aws.events") {
     return runAlertEngine();
@@ -118,6 +164,11 @@ async function runAlertEngine() {
   };
 
   const candidates = checkAlerts(context);
+
+  // Check economic events for countdown alerts
+  const eventAlerts = await checkEventCountdowns(now);
+  candidates.push(...eventAlerts);
+
   const today = now.toISOString().split("T")[0];
   let newAlerts = 0;
 
@@ -166,8 +217,8 @@ async function runAlertEngine() {
 
     newAlerts++;
 
-    // Send push notification for high/critical alerts
-    if (alert.impact === "high" || alert.impact === "critical") {
+    // Send push notification for medium+ alerts
+    if (alert.impact === "medium" || alert.impact === "high" || alert.impact === "critical") {
       try {
         await lambdaClient.send(
           new InvokeCommand({

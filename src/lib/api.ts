@@ -88,6 +88,24 @@ export async function fetchIntelligence() {
   }>("/market/intelligence");
 }
 
+export async function fetchWeeklyReport() {
+  return apiFetch<{
+    weekStart: string;
+    weekEnd: string;
+    priceOpen: number;
+    priceClose: number;
+    weekHigh: number;
+    weekLow: number;
+    weekChange: number;
+    weekChangePercent: number;
+    totalAlerts: number;
+    alertBreakdown: { session: number; price: number; economic: number; intelligence: number };
+    briefingAccuracy: string;
+    keyEvents: string[];
+    outlook: string;
+  }>("/report");
+}
+
 export async function subscribePush(subscription: PushSubscription) {
   if (!API_BASE) return false;
   try {
