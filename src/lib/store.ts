@@ -70,6 +70,7 @@ interface MarketStore {
   setPrice: (price: PriceData) => void;
   addPriceHistory: (price: number) => void;
   setEvents: (events: MarketEvent[]) => void;
+  setIntelligence: (items: IntelligenceItem[]) => void;
   addIntelligence: (item: IntelligenceItem) => void;
   addAlert: (alert: Alert) => void;
   markAlertRead: (id: string) => void;
@@ -115,6 +116,7 @@ export const useMarketStore = create<MarketStore>((set) => ({
       priceHistory: [...state.priceHistory.slice(-49), p],
     })),
   setEvents: (events) => set({ events }),
+  setIntelligence: (items) => set({ intelligence: items.slice(0, 50) }),
   addIntelligence: (item) =>
     set((state) => ({
       intelligence: [item, ...state.intelligence].slice(0, 50),

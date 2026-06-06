@@ -59,6 +59,35 @@ export async function fetchBriefing() {
   }>("/briefing");
 }
 
+export async function fetchEvents() {
+  return apiFetch<{
+    events: Array<{
+      id: string;
+      name: string;
+      impact: string;
+      time: string;
+      currency: string;
+      forecast?: string;
+      previous?: string;
+      actual?: string;
+    }>;
+  }>("/market/events");
+}
+
+export async function fetchIntelligence() {
+  return apiFetch<{
+    intelligence: Array<{
+      id: string;
+      timestamp: string;
+      type: string;
+      title: string;
+      summary: string;
+      confidence: number;
+      impact: string;
+    }>;
+  }>("/market/intelligence");
+}
+
 export async function subscribePush(subscription: PushSubscription) {
   if (!API_BASE) return false;
   try {

@@ -95,25 +95,31 @@ export async function startAuthentication(): Promise<PublicKeyCredential | null>
   const assertionResponse =
     credential.response as AuthenticatorAssertionResponse;
 
-  const verifyResponse = await fetch(`${API_BASE}/auth/login/verify`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      id: credential.id,
-      rawId: bufferToBase64URL(credential.rawId),
-      type: credential.type,
-      response: {
-        authenticatorData: bufferToBase64URL(
-          assertionResponse.authenticatorData
-        ),
-        clientDataJSON: bufferToBase64URL(assertionResponse.clientDataJSON),
-        signature: bufferToBase64URL(assertionResponse.signature),
-      },
-    }),
-  });
+  let verifyResponse: Response;
+  try {
+    verifyResponse = await fetch(`${API_BASE}/auth/login/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: credential.id,
+        rawId: bufferToBase64URL(credential.rawId),
+        type: credential.type,
+        response: {
+          authenticatorData: bufferToBase64URL(
+            assertionResponse.authenticatorData
+          ),
+          clientDataJSON: bufferToBase64URL(assertionResponse.clientDataJSON),
+          signature: bufferToBase64URL(assertionResponse.signature),
+        },
+      }),
+    });
+  } catch (fetchErr) {
+    throw new Error("Network error during verification. Check connection.");
+  }
 
   if (!verifyResponse.ok) {
-    throw new Error("Verification failed");
+    const body = await verifyResponse.json().catch(() => ({}));
+    throw new Error(body.error || `Verification failed (${verifyResponse.status})`);
   }
 
   return credential;

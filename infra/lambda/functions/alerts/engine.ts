@@ -1,8 +1,11 @@
-import { DynamoDBClient, PutItemCommand, QueryCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, PutItemCommand, QueryCommand, GetItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 
 const dynamo = new DynamoDBClient({});
+const lambdaClient = new LambdaClient({});
 const ALERTS_TABLE = process.env.ALERTS_TABLE!;
 const MARKET_DATA_TABLE = process.env.MARKET_DATA_TABLE!;
+const PUSH_FUNCTION = process.env.PUSH_FUNCTION || "tradeassistant-push-notify";
 
 interface AlertResult {
   key: string;
@@ -162,6 +165,29 @@ async function runAlertEngine() {
     );
 
     newAlerts++;
+
+    // Send push notification for high/critical alerts
+    if (alert.impact === "high" || alert.impact === "critical") {
+      try {
+        await lambdaClient.send(
+          new InvokeCommand({
+            FunctionName: PUSH_FUNCTION,
+            InvocationType: "Event",
+            Payload: Buffer.from(JSON.stringify({
+              httpMethod: "POST",
+              path: "/send",
+              body: JSON.stringify({
+                title: alert.title,
+                message: alert.summary,
+                tag: `${alert.category}-alert`,
+              }),
+            })),
+          })
+        );
+      } catch (pushErr) {
+        console.error("Push invoke failed:", pushErr);
+      }
+    }
   }
 
   console.log(`Alert engine: ${newAlerts} new alerts (${candidates.length} candidates, ${candidates.length - newAlerts} deduped)`);

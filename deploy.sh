@@ -57,12 +57,6 @@ deploy_backend() {
   log "Installing infra dependencies..."
   npm install
 
-  # Install lambda layer deps
-  log "Installing Lambda layer dependencies..."
-  cd lambda/layers/shared/nodejs
-  npm install
-  cd "$SCRIPT_DIR/infra"
-
   # Bootstrap CDK (first time only)
   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
   REGION=${AWS_REGION:-ap-southeast-1}
@@ -158,13 +152,16 @@ deploy_frontend() {
     --cache-control "public, max-age=3600" 2>/dev/null || true
 
   # Invalidate CloudFront
-  if [ -f cdk-outputs.json ]; then
-    DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[?DomainName=='${BUCKET}.s3.amazonaws.com']].Id" --output text 2>/dev/null || echo "")
-    if [ -n "$DIST_ID" ] && [ "$DIST_ID" != "None" ]; then
-      log "Invalidating CloudFront cache..."
-      aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" >/dev/null 2>&1 || true
-      success "CloudFront invalidated"
-    fi
+  DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(DomainName,'dp5ho4pdlyl6w')].Id" --output text 2>/dev/null || echo "")
+  if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+    DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[?contains(DomainName,'tradeassistant-site')]].Id" --output text 2>/dev/null || echo "")
+  fi
+  if [ -n "$DIST_ID" ] && [ "$DIST_ID" != "None" ]; then
+    log "Invalidating CloudFront ($DIST_ID)..."
+    aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" >/dev/null 2>&1 || true
+    success "CloudFront invalidated"
+  else
+    warn "Could not find CloudFront distribution for invalidation"
   fi
 
   success "Frontend deployed"

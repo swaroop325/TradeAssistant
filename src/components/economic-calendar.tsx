@@ -83,9 +83,15 @@ export function EconomicCalendar() {
       </div>
 
       <div className="space-y-2">
-        {events.map((event) => (
-          <EventRow key={event.id} event={event} />
-        ))}
+        {events.length === 0 ? (
+          <div className="text-center py-4">
+            <span className="text-xs text-muted-foreground">No upcoming events</span>
+          </div>
+        ) : (
+          events.map((event) => (
+            <EventRow key={event.id} event={event} />
+          ))
+        )}
       </div>
     </Card>
   );

@@ -10,8 +10,10 @@
     "destroy": "cdk destroy --all"
   },
   "dependencies": {
+    "@types/web-push": "^3.6.4",
     "aws-cdk-lib": "^2.150.0",
-    "constructs": "^10.3.0"
+    "constructs": "^10.3.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^20",

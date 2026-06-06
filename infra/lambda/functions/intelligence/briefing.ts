@@ -27,7 +27,7 @@ async function generateBriefing() {
   const priceItem = priceResult.Items?.[0];
   if (!priceItem?.data?.S) {
     console.log("No market data for briefing");
-    return { statusCode: 200, body: "No data" };
+    return { statusCode: 404, body: JSON.stringify({ error: "No market data" }) };
   }
 
   const marketData = JSON.parse(priceItem.data.S);
@@ -170,17 +170,29 @@ async function getLatestBriefing() {
   );
 
   const item = result.Items?.[0];
-  if (!item?.data?.S) {
+  if (item?.data?.S) {
     return {
-      statusCode: 404,
+      statusCode: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ error: "No briefing available" }),
+      body: item.data.S,
     };
   }
 
+  // No briefing yet — generate on demand
+  const genResult = await generateBriefing();
+  if (genResult.statusCode === 200 && genResult.body) {
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      body: genResult.body,
+    };
+  }
+
+  // No market data available — return fallback
+  const fallback = generateFallbackBriefing({ price: 0, change: 0, changePercent: 0, high: 0, low: 0, open: 0 });
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-    body: item.data.S,
+    body: JSON.stringify(fallback),
   };
 }

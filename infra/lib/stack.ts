@@ -87,7 +87,7 @@ export class TradeAssistantStack extends cdk.Stack {
     });
 
     credentialsTable.grantReadWriteData(authRegisterFn);
-    credentialsTable.grantReadData(authLoginFn);
+    credentialsTable.grantReadWriteData(authLoginFn);
 
     // Market Data Lambda (Yahoo Finance - no API key needed)
     const marketDataFn = new NodejsFunction(this, "MarketDataFn", {
@@ -107,6 +107,39 @@ export class TradeAssistantStack extends cdk.Stack {
 
     marketDataTable.grantReadData(marketScoreFn);
 
+    // Economic Calendar Lambda
+    const marketEventsFn = new NodejsFunction(this, "MarketEvents", {
+      ...nodejsProps,
+      functionName: "tradeassistant-market-events",
+      entry: path.join(FUNCTIONS_DIR, "market/events.ts"),
+    });
+
+    marketDataTable.grantReadWriteData(marketEventsFn);
+
+    // Market Intelligence Lambda
+    const marketIntelFn = new NodejsFunction(this, "MarketIntel", {
+      ...nodejsProps,
+      functionName: "tradeassistant-market-intel",
+      entry: path.join(FUNCTIONS_DIR, "market/intelligence.ts"),
+    });
+
+    marketDataTable.grantReadWriteData(marketIntelFn);
+
+    // Push Notification Lambda
+    const pushNotifyFn = new NodejsFunction(this, "PushNotify", {
+      ...nodejsProps,
+      functionName: "tradeassistant-push-notify",
+      entry: path.join(FUNCTIONS_DIR, "notifications/push.ts"),
+      environment: {
+        ...defaultEnv,
+        VAPID_PUBLIC_KEY: "BP-X2vX3-dpA-XaMYFarXgH6Xg9Rj3GvWMX0adFFaDElVe-TRQWG9O4RNHuY6gDvKFGzhe-Eoa9ZPdqtPsrH_eQ",
+        VAPID_PRIVATE_KEY: "NZostPRA9GqJSFnBx9e04rd7zaHOavizb0UOxUjXipI",
+        VAPID_SUBJECT: "mailto:swaroopanand325@gmail.com",
+      },
+    });
+
+    subscriptionsTable.grantReadWriteData(pushNotifyFn);
+
     // Alert Engine Lambda
     const alertEngineFn = new NodejsFunction(this, "AlertEngine", {
       ...nodejsProps,
@@ -118,21 +151,8 @@ export class TradeAssistantStack extends cdk.Stack {
     alertsTable.grantReadWriteData(alertEngineFn);
     subscriptionsTable.grantReadData(alertEngineFn);
     marketDataTable.grantReadData(alertEngineFn);
-
-    // Push Notification Lambda
-    const pushNotifyFn = new NodejsFunction(this, "PushNotify", {
-      ...nodejsProps,
-      functionName: "tradeassistant-push-notify",
-      entry: path.join(FUNCTIONS_DIR, "notifications/push.ts"),
-      environment: {
-        ...defaultEnv,
-        VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || "",
-        VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || "",
-        VAPID_SUBJECT: "mailto:swaroopanand325@gmail.com",
-      },
-    });
-
-    subscriptionsTable.grantReadWriteData(pushNotifyFn);
+    pushNotifyFn.grantInvoke(alertEngineFn);
+    alertEngineFn.addEnvironment("PUSH_FUNCTION", pushNotifyFn.functionName);
 
     // Daily Briefing Lambda (uses Bedrock)
     const dailyBriefingFn = new NodejsFunction(this, "DailyBriefing", {
@@ -191,6 +211,12 @@ export class TradeAssistantStack extends cdk.Stack {
     marketResource
       .addResource("score")
       .addMethod("GET", new apigateway.LambdaIntegration(marketScoreFn));
+    marketResource
+      .addResource("events")
+      .addMethod("GET", new apigateway.LambdaIntegration(marketEventsFn));
+    marketResource
+      .addResource("intelligence")
+      .addMethod("GET", new apigateway.LambdaIntegration(marketIntelFn));
 
     const alertsResource = api.root.addResource("alerts");
     alertsResource.addMethod("GET", new apigateway.LambdaIntegration(alertEngineFn));
@@ -212,6 +238,18 @@ export class TradeAssistantStack extends cdk.Stack {
       ruleName: "tradeassistant-alert-engine",
       schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
       targets: [new targets.LambdaFunction(alertEngineFn)],
+    });
+
+    new events.Rule(this, "MarketEventsSchedule", {
+      ruleName: "tradeassistant-market-events",
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      targets: [new targets.LambdaFunction(marketEventsFn)],
+    });
+
+    new events.Rule(this, "MarketIntelSchedule", {
+      ruleName: "tradeassistant-market-intel",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+      targets: [new targets.LambdaFunction(marketIntelFn)],
     });
 
     new events.Rule(this, "DailyBriefingSchedule", {

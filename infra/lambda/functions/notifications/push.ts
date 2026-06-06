@@ -1,10 +1,13 @@
 import { DynamoDBClient, PutItemCommand, DeleteItemCommand, ScanCommand } from "@aws-sdk/client-dynamodb";
+import webpush from "web-push";
 
 const dynamo = new DynamoDBClient({});
 const TABLE = process.env.SUBSCRIPTIONS_TABLE!;
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "";
+
+webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 export async function handler(event: any) {
   const path = event.path || event.rawPath || "";
@@ -113,8 +116,12 @@ async function sendWebPush(
   subscription: { endpoint: string; keys: any },
   payload: string
 ) {
-  console.log(`Sending push to: ${subscription.endpoint.substring(0, 50)}...`);
-  console.log(`Payload: ${payload}`);
+  const pushSub = {
+    endpoint: subscription.endpoint,
+    keys: subscription.keys,
+  };
+  const result = await webpush.sendNotification(pushSub, payload);
+  console.log(`Push sent to ${subscription.endpoint.substring(0, 50)}... Status: ${result.statusCode}`);
 }
 
 function response(statusCode: number, body: any) {

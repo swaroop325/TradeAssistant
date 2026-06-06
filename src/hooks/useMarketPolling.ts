@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useMarketStore } from "@/lib/store";
-import { fetchMarketData, fetchAlerts, fetchBriefing, fetchMarketScore } from "@/lib/api";
+import { fetchMarketData, fetchAlerts, fetchBriefing, fetchMarketScore, fetchEvents, fetchIntelligence } from "@/lib/api";
 import { isMarketOpen } from "@/lib/market-hours";
 
 export function useMarketPolling() {
@@ -77,6 +77,35 @@ export function useMarketPolling() {
             });
           }
         }
+
+        const eventsData = await fetchEvents();
+        if (eventsData?.events) {
+          useMarketStore.getState().setEvents(
+            eventsData.events.map((e) => ({
+              id: e.id,
+              name: e.name,
+              impact: e.impact as any,
+              time: new Date(e.time),
+              forecast: e.forecast,
+              previous: e.previous,
+            }))
+          );
+        }
+
+        const intelData = await fetchIntelligence();
+        if (intelData?.intelligence && intelData.intelligence.length > 0) {
+          useMarketStore.getState().setIntelligence(
+            intelData.intelligence.map((item) => ({
+              id: item.id,
+              timestamp: new Date(item.timestamp),
+              type: item.type as any,
+              title: item.title,
+              summary: item.summary,
+              confidence: item.confidence,
+              impact: item.impact as any,
+            }))
+          );
+        }
       } catch (err) {
         console.error("[Poll] Error:", err);
       }
@@ -89,8 +118,17 @@ export function useMarketPolling() {
     const interval = isMarketOpen() ? 60_000 : 300_000;
     intervalRef.current = setInterval(poll, interval);
 
+    // Re-fetch when user returns to the page
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        poll();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 

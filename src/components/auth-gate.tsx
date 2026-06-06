@@ -29,10 +29,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setError("Authentication cancelled");
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
+      const msg = err instanceof Error ? err.message : String(err);
 
-      // If no credentials exist, try registration
-      if (msg.includes("No credentials") || msg.includes("not found") || msg.includes("404")) {
+      // If no credentials exist or not found, try registration
+      if (
+        msg.includes("No credentials") ||
+        msg.includes("not found") ||
+        msg.includes("404") ||
+        msg.includes("No registered")
+      ) {
         try {
           const cred = await startRegistration();
           if (cred) {
@@ -44,8 +49,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         } catch (regErr) {
           setError(regErr instanceof Error ? regErr.message : "Registration failed");
         }
+      } else if (msg.includes("NotAllowedError") || msg.includes("cancelled") || msg.includes("abort")) {
+        setError("Authentication cancelled. Tap to try again.");
       } else {
-        setError(msg || "Authentication failed");
+        setError(msg || "Authentication failed. Tap to try again.");
       }
     } finally {
       setLoading(false);

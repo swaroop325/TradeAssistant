@@ -1,36 +1,183 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TradeAssistant
 
-## Getting Started
+Personal trading intelligence platform for XAUUSD (Gold). Mobile-first PWA with real-time market data, AI-powered briefings, economic calendar, and push notifications.
 
-First, run the development server:
+## AWS Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+                          ┌─────────────────────────────────────────────────────┐
+                          │                   CloudFront                         │
+                          │            dp5ho4pdlyl6w.cloudfront.net              │
+                          └────────────────────┬────────────────────────────────┘
+                                               │
+                    ┌──────────────────────────┼──────────────────────────┐
+                    │                          │                          │
+                    ▼                          ▼                          ▼
+        ┌───────────────────┐    ┌───────────────────────┐    ┌──────────────────┐
+        │    S3 Bucket      │    │   API Gateway (REST)   │    │   Service Worker  │
+        │  Static PWA       │    │   /prod/*              │    │   Push + Cache    │
+        │  Next.js Export   │    └───────────┬───────────┘    └──────────────────┘
+        └───────────────────┘                │
+                                             │
+          ┌──────────────┬──────────────┬────┴────┬──────────────┬──────────────┐
+          ▼              ▼              ▼         ▼              ▼              ▼
+   ┌─────────────┐┌─────────────┐┌──────────┐┌──────────┐┌──────────┐┌──────────────┐
+   │Auth Register││Auth Login   ││Market    ││Market    ││Market    ││Market        │
+   │  Lambda     ││  Lambda     ││Data      ││Score     ││Events    ││Intelligence  │
+   └──────┬──────┘└──────┬──────┘│  Lambda  ││  Lambda  ││  Lambda  ││  Lambda      │
+          │              │       └────┬─────┘└────┬─────┘└────┬─────┘└──────┬───────┘
+          │              │            │           │           │             │
+          ▼              ▼            ▼           ▼           ▼             ▼
+   ┌─────────────────────────────────────────────────────────────────────────────────┐
+   │                              DynamoDB Tables                                     │
+   │  ┌──────────────────┐  ┌──────────────┐  ┌───────────────────┐  ┌───────────┐  │
+   │  │ credentials      │  │ alerts       │  │ market-data       │  │subscriptions│ │
+   │  │ (passkey store)  │  │ (pk/sk+TTL)  │  │ (price/briefing/  │  │(push subs) │  │
+   │  │ + userId GSI     │  │              │  │  events/intel)    │  │            │  │
+   │  └──────────────────┘  └──────────────┘  └───────────────────┘  └───────────┘  │
+   └─────────────────────────────────────────────────────────────────────────────────┘
+
+          ┌──────────────┐    ┌───────────────────┐    ┌─────────────────┐
+          │Alert Engine  │───▶│Push Notify Lambda │───▶│Apple Push Service│
+          │  Lambda      │    │ (web-push/VAPID)  │    │(iPhone notifs)   │
+          └──────┬───────┘    └───────────────────┘    └─────────────────┘
+                 │
+          ┌──────┴───────┐    ┌───────────────────┐    ┌─────────────────┐
+          │Daily Briefing│───▶│AWS Bedrock        │    │Yahoo Finance    │
+          │  Lambda      │    │(Nova Micro - AI)  │    │(GC=F price feed)│
+          └──────────────┘    └───────────────────┘    └─────────────────┘
+
+   ┌─────────────────────────────────────────────────────────────────────────────────┐
+   │                           EventBridge Schedules                                  │
+   │                                                                                  │
+   │  ┌────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────────────────┐ │
+   │  │Every 1 min │  │Every 5 min   │  │Every 1 hour │  │Cron: 07:00 & 20:00 SGT│ │
+   │  │Market Data │  │Alert Engine  │  │Market Events│  │Daily Briefing          │ │
+   │  │            │  │Market Intel  │  │             │  │                        │ │
+   │  └────────────┘  └──────────────┘  └─────────────┘  └────────────────────────┘ │
+   └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 15 + TypeScript + TailwindCSS + Framer Motion + Zustand |
+| Backend | AWS Lambda (Node.js 20) + API Gateway REST |
+| Database | DynamoDB (PAY_PER_REQUEST, TTL-enabled) |
+| Hosting | S3 + CloudFront (static export) |
+| IaC | AWS CDK v2 (TypeScript, NodejsFunction auto-bundling) |
+| Auth | WebAuthn/Passkey (Face ID, single-owner) |
+| Notifications | Web Push via VAPID → Apple Push Service |
+| AI | AWS Bedrock (Nova Micro) for daily briefings |
+| Scheduling | EventBridge Rules (cron + rate) |
+| Price Feed | Yahoo Finance (`GC=F` Gold Futures, keyless) |
+| Calendar | FairEconomy/ForexFactory JSON feed |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Live URLs
 
-## Learn More
+- **App**: https://dp5ho4pdlyl6w.cloudfront.net
+- **API**: https://b0031huge4.execute-api.ap-southeast-1.amazonaws.com/prod
 
-To learn more about Next.js, take a look at the following resources:
+## API Endpoints
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/register/options` | Start passkey registration |
+| POST | `/auth/register/verify` | Complete registration |
+| POST | `/auth/login/options` | Start authentication |
+| POST | `/auth/login/verify` | Complete authentication |
+| GET | `/market/data` | Current XAUUSD price (Yahoo Finance) |
+| GET | `/market/score` | Market health score (0-100) |
+| GET | `/market/events` | Economic calendar events |
+| GET | `/market/intelligence` | Market intelligence feed |
+| GET | `/alerts` | Recent alerts |
+| GET | `/briefing` | Daily AI briefing |
+| POST | `/subscribe` | Register push subscription |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Lambda Functions (9 total)
 
-## Deploy on Vercel
+| Function | Entry | Trigger |
+|----------|-------|---------|
+| `tradeassistant-auth-register` | auth/register.ts | API Gateway POST |
+| `tradeassistant-auth-login` | auth/login.ts | API Gateway POST |
+| `tradeassistant-market-data` | market/data.ts | EventBridge (1 min) + API |
+| `tradeassistant-market-score` | market/score.ts | API Gateway GET |
+| `tradeassistant-market-events` | market/events.ts | EventBridge (1 hr) + API |
+| `tradeassistant-market-intel` | market/intelligence.ts | EventBridge (5 min) + API |
+| `tradeassistant-alert-engine` | alerts/engine.ts | EventBridge (5 min) + API |
+| `tradeassistant-push-notify` | notifications/push.ts | Invoked by Alert Engine |
+| `tradeassistant-daily-briefing` | intelligence/briefing.ts | EventBridge (cron) + API |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## DynamoDB Tables
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Table | Partition Key | Sort Key | TTL | Purpose |
+|-------|-------------|----------|-----|---------|
+| `tradeassistant-credentials` | credentialId | — | ttl | Passkey credentials + challenges |
+| `tradeassistant-alerts` | pk | sk | ttl | Alerts + dedup keys |
+| `tradeassistant-market-data` | pk | sk | ttl | Price, briefing, events, intelligence |
+| `tradeassistant-subscriptions` | endpoint | — | — | Push notification subscriptions |
+
+## Push Notification Types
+
+| Tag | Category | Trigger |
+|-----|----------|---------|
+| `session-alert` | Session | London/NY session approaching |
+| `price-alert` | Price | Gold moves >2% in a day |
+| `intelligence-alert` | Intelligence | High volatility (>80 pip range) |
+| `economic-alert` | Economic | High-impact event imminent |
+| `briefing` | Briefing | Morning/evening AI briefing |
+
+## Data Flow
+
+```
+Yahoo Finance (GC=F) ──1min──▶ Market Data Lambda ──▶ DynamoDB (LATEST#XAUUSD)
+                                                              │
+                    ┌─────────────────────────────────────────┤
+                    ▼                    ▼                     ▼
+            Market Score          Alert Engine          Market Intelligence
+            (on-demand)           (every 5min)           (every 5min)
+                                       │
+                                       ▼
+                              Push Notify Lambda ──▶ Apple Push ──▶ iPhone
+```
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Deployment
+
+```bash
+./deploy.sh
+```
+
+Or manually:
+```bash
+# Backend
+cd infra && npx cdk deploy
+
+# Frontend
+npx next build
+aws s3 sync out/ s3://tradeassistant-site-735902317408 --delete
+aws cloudfront create-invalidation --distribution-id E2175DR3YT3UKQ --paths "/*"
+```
+
+## Environment Variables
+
+Frontend (`.env.local`):
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` - VAPID public key for push subscriptions
+- `NEXT_PUBLIC_API_URL` - API Gateway base URL
+- `NEXT_PUBLIC_APP_URL` - CloudFront app URL
+
+Backend (set in CDK stack):
+- `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` - For sending push notifications
+- `VAPID_SUBJECT` - mailto: contact for VAPID
+- DynamoDB table names (auto-configured by CDK)
+
+## Region
+
+All AWS resources deployed in `ap-southeast-1` (Singapore) for lowest latency.

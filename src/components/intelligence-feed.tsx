@@ -91,11 +91,17 @@ export function IntelligenceFeed() {
       </div>
 
       <div className="space-y-0 max-h-72 overflow-y-auto pr-1">
-        <AnimatePresence mode="popLayout">
-          {intelligence.slice(0, 6).map((item, i) => (
-            <IntelItem key={item.id} item={item} index={i} />
-          ))}
-        </AnimatePresence>
+        {intelligence.length === 0 ? (
+          <div className="text-center py-4">
+            <span className="text-xs text-muted-foreground">Analyzing market data...</span>
+          </div>
+        ) : (
+          <AnimatePresence mode="popLayout">
+            {intelligence.slice(0, 6).map((item, i) => (
+              <IntelItem key={item.id} item={item} index={i} />
+            ))}
+          </AnimatePresence>
+        )}
       </div>
     </Card>
   );
