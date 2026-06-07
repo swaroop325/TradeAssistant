@@ -125,6 +125,13 @@ export class TradeAssistantStack extends cdk.Stack {
 
     marketDataTable.grantReadWriteData(marketIntelFn);
 
+    // Market Candles Lambda (proxies Yahoo Finance OHLC data)
+    const marketCandlesFn = new NodejsFunction(this, "MarketCandles", {
+      ...nodejsProps,
+      functionName: "tradeassistant-market-candles",
+      entry: path.join(FUNCTIONS_DIR, "market/candles.ts"),
+    });
+
     // Push Notification Lambda
     const pushNotifyFn = new NodejsFunction(this, "PushNotify", {
       ...nodejsProps,
@@ -262,6 +269,9 @@ export class TradeAssistantStack extends cdk.Stack {
     marketResource
       .addResource("intelligence")
       .addMethod("GET", new apigateway.LambdaIntegration(marketIntelFn));
+    marketResource
+      .addResource("candles")
+      .addMethod("GET", new apigateway.LambdaIntegration(marketCandlesFn));
 
     const alertsResource = api.root.addResource("alerts");
     alertsResource.addMethod("GET", new apigateway.LambdaIntegration(alertEngineFn));

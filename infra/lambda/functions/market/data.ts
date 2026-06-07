@@ -1,10 +1,9 @@
-import { DynamoDBClient, PutItemCommand, QueryCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, PutItemCommand, QueryCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
 
 const dynamo = new DynamoDBClient({});
 const TABLE = process.env.MARKET_DATA_TABLE!;
 
-const YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m&range=1d";
-const CORR_SYMBOLS = ["DX-Y.NYB", "%5ETNX", "%5EVIX"];
+const SPOT_URL = "https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD";
 
 interface PriceData {
   symbol: string;
@@ -29,6 +28,14 @@ interface CorrelationData {
   signal: string;
 }
 
+interface DailyState {
+  open: number;
+  high: number;
+  low: number;
+  previousClose: number;
+  date: string;
+}
+
 export async function handler(event: any) {
   if (event.source === "aws.events") {
     return pollMarketData();
@@ -39,53 +46,83 @@ export async function handler(event: any) {
 
 async function pollMarketData() {
   try {
-    const response = await fetch(YAHOO_URL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-      },
-    });
+    const response = await fetch(SPOT_URL);
 
     if (!response.ok) {
-      console.error("Yahoo Finance error:", response.status);
-      return { statusCode: 500, body: "Yahoo API error" };
+      console.error("Swissquote error:", response.status);
+      return { statusCode: 500, body: "Spot API error" };
     }
 
     const data = await response.json();
-    const result = data.chart?.result?.[0];
+    const quotes = data?.[0]?.spreadProfilePrices?.[0];
 
-    if (!result) {
-      console.error("No chart data returned");
+    if (!quotes) {
+      console.error("No spot data returned");
       return { statusCode: 500, body: "No data" };
     }
 
-    const meta = result.meta;
-    const price = meta.regularMarketPrice;
-    const previousClose = meta.chartPreviousClose || meta.previousClose || price;
-    const change = price - previousClose;
-    const changePercent = (change / previousClose) * 100;
+    const price = parseFloat(quotes.bid.toFixed(2));
 
-    const indicators = result.indicators?.quote?.[0];
-    const highs = indicators?.high?.filter((v: number | null) => v !== null) || [];
-    const lows = indicators?.low?.filter((v: number | null) => v !== null) || [];
+    // Get or initialize daily state (OHLC tracking)
+    const now = new Date();
+    const dateKey = now.toISOString().split("T")[0];
 
-    const dayHigh = highs.length > 0 ? Math.max(...highs) : price;
-    const dayLow = lows.length > 0 ? Math.min(...lows) : price;
-    const dayOpen = indicators?.open?.find((v: number | null) => v !== null) || price;
+    const dailyResult = await dynamo.send(
+      new GetItemCommand({
+        TableName: TABLE,
+        Key: { pk: { S: "DAILY#XAUUSD" }, sk: { S: "state" } },
+      })
+    );
 
-    // Pivot points (from previous day's H/L/C)
-    const pp = (dayHigh + dayLow + price) / 3;
+    let daily: DailyState;
+    const existingState = dailyResult.Item?.data?.S ? JSON.parse(dailyResult.Item.data.S) as DailyState : null;
+
+    if (existingState && existingState.date === dateKey) {
+      daily = {
+        ...existingState,
+        high: Math.max(existingState.high, price),
+        low: Math.min(existingState.low, price),
+      };
+    } else {
+      // New day — previous close is the last known price
+      const prevClose = existingState ? existingState.high > 0 ? parseFloat(((existingState.high + existingState.low) / 2).toFixed(2)) : price : price;
+      daily = {
+        open: price,
+        high: price,
+        low: price,
+        previousClose: existingState ? prevClose : price,
+        date: dateKey,
+      };
+    }
+
+    // Save updated daily state
+    await dynamo.send(
+      new PutItemCommand({
+        TableName: TABLE,
+        Item: {
+          pk: { S: "DAILY#XAUUSD" },
+          sk: { S: "state" },
+          data: { S: JSON.stringify(daily) },
+        },
+      })
+    );
+
+    const change = price - daily.previousClose;
+    const changePercent = daily.previousClose > 0 ? (change / daily.previousClose) * 100 : 0;
+
+    // Pivot points
+    const pp = (daily.high + daily.low + price) / 3;
     const pivots = {
       pp: parseFloat(pp.toFixed(2)),
-      r1: parseFloat((2 * pp - dayLow).toFixed(2)),
-      r2: parseFloat((pp + (dayHigh - dayLow)).toFixed(2)),
-      r3: parseFloat((dayHigh + 2 * (pp - dayLow)).toFixed(2)),
-      s1: parseFloat((2 * pp - dayHigh).toFixed(2)),
-      s2: parseFloat((pp - (dayHigh - dayLow)).toFixed(2)),
-      s3: parseFloat((dayLow - 2 * (dayHigh - pp)).toFixed(2)),
+      r1: parseFloat((2 * pp - daily.low).toFixed(2)),
+      r2: parseFloat((pp + (daily.high - daily.low)).toFixed(2)),
+      r3: parseFloat((daily.high + 2 * (pp - daily.low)).toFixed(2)),
+      s1: parseFloat((2 * pp - daily.high).toFixed(2)),
+      s2: parseFloat((pp - (daily.high - daily.low)).toFixed(2)),
+      s3: parseFloat((daily.low - 2 * (daily.high - pp)).toFixed(2)),
     };
 
-    // Average daily range (use current range vs typical 30-pip average for gold)
-    const currentRange = dayHigh - dayLow;
+    const currentRange = daily.high - daily.low;
     const avgDailyRange = 35;
     const rangeConsumed = Math.min(100, Math.round((currentRange / avgDailyRange) * 100));
 
@@ -97,19 +134,16 @@ async function pollMarketData() {
       price,
       change: parseFloat(change.toFixed(2)),
       changePercent: parseFloat(changePercent.toFixed(2)),
-      high: dayHigh,
-      low: dayLow,
-      open: dayOpen,
-      previousClose,
-      timestamp: new Date().toISOString(),
+      high: daily.high,
+      low: daily.low,
+      open: daily.open,
+      previousClose: daily.previousClose,
+      timestamp: now.toISOString(),
       rangeConsumed,
       avgDailyRange,
       pivots,
       correlations,
     };
-
-    const now = new Date();
-    const dateKey = now.toISOString().split("T")[0];
 
     await dynamo.send(
       new PutItemCommand({
@@ -137,7 +171,7 @@ async function pollMarketData() {
       })
     );
 
-    console.log(`Price updated: ${priceData.price} (${priceData.changePercent}%)`);
+    console.log(`Price updated: ${priceData.price} (${priceData.changePercent.toFixed(2)}%)`);
     return { statusCode: 200, body: "OK" };
   } catch (error) {
     console.error("Poll error:", error);

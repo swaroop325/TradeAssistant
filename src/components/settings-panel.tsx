@@ -30,7 +30,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border z-[70] overflow-y-auto"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-sm bg-card border-l border-border z-[70] overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]"
           >
             <div className="p-5">
               <div className="flex items-center justify-between mb-6">

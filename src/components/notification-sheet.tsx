@@ -69,7 +69,7 @@ export function NotificationSheet({ open, onClose }: NotificationSheetProps) {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-3xl z-[70] p-5 max-h-[80vh] overflow-y-auto"
+            className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-3xl z-[70] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] max-h-[80vh] overflow-y-auto"
           >
             <div className="w-10 h-1 rounded-full bg-muted mx-auto mb-4" />
 

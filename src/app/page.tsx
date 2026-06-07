@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { CommandBar } from "@/components/command-bar";
 import { GoldPriceCard } from "@/components/gold-price-card";
+import { PriceChart } from "@/components/price-chart";
 import { MarketScoreCard } from "@/components/market-score-card";
 import { SessionMonitor } from "@/components/session-monitor";
 import { EconomicCalendar } from "@/components/economic-calendar";
@@ -45,7 +46,7 @@ export default function Dashboard() {
 
   return (
     <AuthGate>
-    <div className="min-h-dvh">
+    <div className="min-h-dvh pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <CommandBar />
 
       <main className="max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
@@ -61,6 +62,10 @@ export default function Dashboard() {
 
           <motion.div variants={fadeUp}>
             <MarketScoreCard />
+          </motion.div>
+
+          <motion.div variants={fadeUp} className="col-span-full">
+            <PriceChart />
           </motion.div>
 
           <motion.div variants={fadeUp}>

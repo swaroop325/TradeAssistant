@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useMarketStore } from "@/lib/store";
 import { formatPrice, formatPercent, cn } from "@/lib/utils";
-import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 import { useEffect, useState, useRef } from "react";
 
 function AnimatedPrice({ value, className }: { value: number; className?: string }) {
@@ -53,11 +52,9 @@ function AnimatedPrice({ value, className }: { value: number; className?: string
 }
 
 export function GoldPriceCard() {
-  const { price, priceHistory } = useMarketStore();
+  const { price } = useMarketStore();
   const isLoading = price.price === 0;
   const isBullish = price.changePercent >= 0;
-
-  const chartData = priceHistory.map((p, i) => ({ value: p, idx: i }));
 
   const trendLabel = {
     strong_up: "Strong Uptrend",
@@ -127,36 +124,6 @@ export function GoldPriceCard() {
             L: <span className="text-foreground font-medium tabular-nums">{formatPrice(price.low)}</span>
           </div>
         </div>
-      </div>
-
-      <div className="h-24 sm:h-32 -mx-2 mb-4">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor={isBullish ? "#10B981" : "#EF4444"}
-                  stopOpacity={0.3}
-                />
-                <stop
-                  offset="95%"
-                  stopColor={isBullish ? "#10B981" : "#EF4444"}
-                  stopOpacity={0}
-                />
-              </linearGradient>
-            </defs>
-            <YAxis domain={["dataMin - 5", "dataMax + 5"]} hide />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={isBullish ? "#10B981" : "#EF4444"}
-              strokeWidth={2}
-              fill="url(#priceGradient)"
-              animationDuration={800}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

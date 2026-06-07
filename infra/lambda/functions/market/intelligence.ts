@@ -13,6 +13,20 @@ interface IntelligenceItem {
   impact: "bullish" | "bearish" | "neutral";
 }
 
+const DEDUP_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function isDuplicate(newItem: IntelligenceItem, existing: IntelligenceItem[]): boolean {
+  const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString();
+  return existing.some(
+    (e) => e.type === newItem.type && e.impact === newItem.impact && e.timestamp > cutoff
+  );
+}
+
+function getRepeatCount(type: string, impact: string, existing: IntelligenceItem[]): number {
+  const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS).toISOString();
+  return existing.filter((e) => e.type === type && e.impact === impact && e.timestamp > cutoff).length;
+}
+
 export async function handler(event: any) {
   if (event.source === "aws.events") {
     return analyzeMarket();
@@ -44,7 +58,6 @@ async function analyzeMarket() {
 
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-  const items: IntelligenceItem[] = [];
   const price = marketData.price;
   const high = marketData.high;
   const low = marketData.low;
@@ -53,9 +66,29 @@ async function analyzeMarket() {
   const range = high - low;
   const rangePosition = range > 0 ? (price - low) / range : 0.5;
 
+  // Fetch existing items for dedup
+  const existingResult = await dynamo.send(
+    new QueryCommand({
+      TableName: MARKET_DATA_TABLE,
+      KeyConditionExpression: "pk = :pk AND sk = :sk",
+      ExpressionAttributeValues: {
+        ":pk": { S: "INTELLIGENCE" },
+        ":sk": { S: "feed" },
+      },
+      Limit: 1,
+    })
+  );
+
+  let existingItems: IntelligenceItem[] = [];
+  if (existingResult.Items?.[0]?.data?.S) {
+    existingItems = JSON.parse(existingResult.Items[0].data.S);
+  }
+
+  const candidates: IntelligenceItem[] = [];
+
   if (Math.abs(changePercent) > 1.5) {
     const direction = changePercent > 0 ? "bullish" : "bearish";
-    items.push({
+    candidates.push({
       id: `sharp-${now.toISOString()}`,
       timestamp: now.toISOString(),
       type: "sharp_move",
@@ -67,7 +100,7 @@ async function analyzeMarket() {
   }
 
   if (range > 40) {
-    items.push({
+    candidates.push({
       id: `vol-${now.toISOString()}`,
       timestamp: now.toISOString(),
       type: "volatility_spike",
@@ -79,30 +112,38 @@ async function analyzeMarket() {
   }
 
   if (rangePosition > 0.9) {
-    items.push({
+    const repeatCount = getRepeatCount("range_breakout", "bullish", existingItems);
+    const title = repeatCount > 0
+      ? `Still Testing Highs (attempt #${repeatCount + 1})`
+      : "Testing Daily Highs";
+    candidates.push({
       id: `breakout-high-${now.toISOString()}`,
       timestamp: now.toISOString(),
       type: "range_breakout",
-      title: "Testing Daily Highs",
-      summary: `Price at ${(rangePosition * 100).toFixed(0)}% of daily range. Breakout potential above ${high.toFixed(0)}.`,
-      confidence: 72,
+      title,
+      summary: `Price at ${(rangePosition * 100).toFixed(0)}% of daily range. ${repeatCount > 0 ? `${repeatCount + 1}x at highs today — persistence suggests breakout.` : `Breakout potential above ${high.toFixed(0)}.`}`,
+      confidence: Math.min(88, 72 + repeatCount * 5),
       impact: "bullish",
     });
   } else if (rangePosition < 0.1) {
-    items.push({
+    const repeatCount = getRepeatCount("range_breakout", "bearish", existingItems);
+    const title = repeatCount > 0
+      ? `Still Testing Lows (attempt #${repeatCount + 1})`
+      : "Testing Daily Lows";
+    candidates.push({
       id: `breakout-low-${now.toISOString()}`,
       timestamp: now.toISOString(),
       type: "range_breakout",
-      title: "Testing Daily Lows",
-      summary: `Price at ${(rangePosition * 100).toFixed(0)}% of daily range. Potential breakdown below ${low.toFixed(0)}.`,
-      confidence: 72,
+      title,
+      summary: `Price at ${(rangePosition * 100).toFixed(0)}% of daily range. ${repeatCount > 0 ? `${repeatCount + 1}x at lows today — persistence suggests breakdown.` : `Potential breakdown below ${low.toFixed(0)}.`}`,
+      confidence: Math.min(88, 72 + repeatCount * 5),
       impact: "bearish",
     });
   }
 
   if (!isWeekend) {
     if (hour === 15 && sgt.getMinutes() < 10) {
-      items.push({
+      candidates.push({
         id: `session-london-${now.toISOString()}`,
         timestamp: now.toISOString(),
         type: "session_break",
@@ -112,7 +153,7 @@ async function analyzeMarket() {
         impact: "neutral",
       });
     } else if (hour === 20 && sgt.getMinutes() < 10) {
-      items.push({
+      candidates.push({
         id: `session-ny-${now.toISOString()}`,
         timestamp: now.toISOString(),
         type: "session_break",
@@ -124,8 +165,8 @@ async function analyzeMarket() {
     }
   }
 
-  if (isWeekend && items.length === 0) {
-    items.push({
+  if (isWeekend && candidates.length === 0 && existingItems.length === 0) {
+    candidates.push({
       id: `weekend-summary-${now.toISOString()}`,
       timestamp: now.toISOString(),
       type: "trend_shift",
@@ -146,7 +187,7 @@ async function analyzeMarket() {
   const prevPrice = prevResult.Item?.data?.S ? parseFloat(prevResult.Item.data.S) : null;
   if (prevPrice && Math.abs(price - prevPrice) > 10) {
     const direction = price > prevPrice ? "bullish" : "bearish";
-    items.push({
+    candidates.push({
       id: `trend-${now.toISOString()}`,
       timestamp: now.toISOString(),
       type: "trend_shift",
@@ -168,24 +209,10 @@ async function analyzeMarket() {
     })
   );
 
+  // Filter out duplicates — only keep genuinely new insights
+  const items = candidates.filter((c) => !isDuplicate(c, existingItems));
+
   if (items.length > 0) {
-    const existingResult = await dynamo.send(
-      new QueryCommand({
-        TableName: MARKET_DATA_TABLE,
-        KeyConditionExpression: "pk = :pk AND sk = :sk",
-        ExpressionAttributeValues: {
-          ":pk": { S: "INTELLIGENCE" },
-          ":sk": { S: "feed" },
-        },
-        Limit: 1,
-      })
-    );
-
-    let existingItems: IntelligenceItem[] = [];
-    if (existingResult.Items?.[0]?.data?.S) {
-      existingItems = JSON.parse(existingResult.Items[0].data.S);
-    }
-
     const merged = [...items, ...existingItems].slice(0, 30);
 
     await dynamo.send(
@@ -202,8 +229,18 @@ async function analyzeMarket() {
     );
   }
 
-  console.log(`Intelligence: generated ${items.length} new items`);
+  console.log(`Intelligence: ${candidates.length} candidates, ${items.length} new (${candidates.length - items.length} deduped)`);
   return { statusCode: 200, body: `${items.length} items` };
+}
+
+function deduplicateFeed(items: IntelligenceItem[]): IntelligenceItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.type}:${item.impact}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function getIntelligence() {
@@ -228,9 +265,12 @@ async function getIntelligence() {
     };
   }
 
+  const feed = JSON.parse(item.data.S) as IntelligenceItem[];
+  const dedupedFeed = deduplicateFeed(feed);
+
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-    body: JSON.stringify({ intelligence: JSON.parse(item.data.S) }),
+    body: JSON.stringify({ intelligence: dedupedFeed }),
   };
 }
